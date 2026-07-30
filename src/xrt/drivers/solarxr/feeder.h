@@ -1,4 +1,5 @@
 // Copyright 2025, rcelyte
+// Copyright 2026, Sapphire
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -20,13 +21,23 @@ struct u_hashmap_int;
 struct feeder
 {
 	struct os_mutex mutex;
-	struct solarxr_ipc_socket socket;
+	struct solarxr_ipc_socket *socket;
 	uint32_t next_id;
 	struct u_hashmap_int *devices;
 };
 
+/*!
+ * Initialise the feeder
+ *
+ * @param feeder self
+ * @param socket RPC socket for communication with server
+ *
+ * @return true on success.
+ *
+ * @public @memberof feeder
+ */
 bool
-feeder_init(struct feeder *feeder, enum u_logging_level log_level);
+feeder_init(struct feeder *feeder, struct solarxr_ipc_socket *socket);
 
 void
 feeder_fini(struct feeder *feeder);
@@ -70,6 +81,27 @@ feeder_remove_device(struct feeder *feeder, struct xrt_device *xdev); // thread 
  */
 void
 feeder_clear_devices(struct feeder *feeder); // thread safe
+
+/*!
+ * Mark all devices as unsent, so an AddTrackerRequest will be sent on next @ref feeder_send_feedback
+ *
+ * @param feeder self
+ *
+ * @public @memberof feeder
+ */
+void
+feeder_mark_unsent(struct feeder *feeder); // thread safe
+
+/*!
+ *
+ * @param feeder self
+ * @param id Internal ID of the tracker (echoed from the request packet in @ref solarxr_driver_message_header::reply_to)
+ * @param tracker_id ID of the tracker from server
+ *
+ * @public @memberof feeder
+ */
+void
+feeder_tracker_add_acked(struct feeder *feeder, uint32_t id, uint16_t tracker_id); // thread safe
 
 /*!
  * Poll all observed xdevs and

@@ -1,4 +1,5 @@
 // Copyright 2025, rcelyte
+// Copyright 2026, Sapphire
 // SPDX-License-Identifier: BSL-1.0
 
 #include "protocol.h"
@@ -148,7 +149,7 @@ read_solarxr_message_bundle(struct solarxr_message_bundle *const out,
                             const solarxr_message_bundle_t *const ref)
 {
 	*out = (struct solarxr_message_bundle){0};
-	uint16_t bundle_vtable[2];
+	uint16_t bundle_vtable[3];
 	const struct table_data bundle =
 	    read_flatbuffers_table(buffer, buffer_len, &ref->offset, bundle_vtable, ARRAY_SIZE(bundle_vtable));
 	if (bundle.length == 0) {
@@ -164,6 +165,12 @@ read_solarxr_message_bundle(struct solarxr_message_bundle *const out,
 	if (bundle_vtable[1] != 0 && bundle_vtable[1] + sizeof(flatbuffers_uoffset_t) <= bundle.length) {
 		out->rpc_msgs = flatbuffers_vector_solarxr_rpc_message_header(read_flatbuffers_vector(
 		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&bundle.data[bundle_vtable[1]],
+		    sizeof(*out->rpc_msgs.data)));
+	}
+
+	if (bundle_vtable[2] != 0 && bundle_vtable[2] + sizeof(flatbuffers_uoffset_t) <= bundle.length) {
+		out->driver_msgs = flatbuffers_vector_solarxr_driver_message_header(read_flatbuffers_vector(
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&bundle.data[bundle_vtable[2]],
 		    sizeof(*out->rpc_msgs.data)));
 	}
 
@@ -193,7 +200,7 @@ read_solarxr_data_feed_message_header(struct solarxr_data_feed_message_header *c
 
 	switch (header.data[header_vtable[0]]) {
 	case SOLARXR_DATA_FEED_MESSAGE_DATA_FEED_UPDATE: {
-		uint16_t update_vtable[3];
+		uint16_t update_vtable[2];
 		const struct table_data update = read_flatbuffers_table(
 		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[1]], update_vtable,
 		    ARRAY_SIZE(update_vtable));
@@ -209,15 +216,8 @@ read_solarxr_data_feed_message_header(struct solarxr_data_feed_message_header *c
 		}
 
 		if (update_vtable[1] != 0 && update_vtable[1] + sizeof(flatbuffers_uoffset_t) <= update.length) {
-			out->message.data_feed_update.synthetic_trackers =
-			    flatbuffers_vector_solarxr_tracker_data(read_flatbuffers_vector(
-			        buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[1]],
-			        sizeof(*out->message.data_feed_update.synthetic_trackers.data)));
-		}
-
-		if (update_vtable[2] != 0 && update_vtable[2] + sizeof(flatbuffers_uoffset_t) <= update.length) {
 			out->message.data_feed_update.bones = flatbuffers_vector_solarxr_bone(read_flatbuffers_vector(
-			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[2]],
+			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[1]],
 			    sizeof(*out->message.data_feed_update.bones.data)));
 		}
 
@@ -236,83 +236,139 @@ read_solarxr_rpc_message_header(struct solarxr_rpc_message_header *const out,
                                 const solarxr_rpc_message_header_t *const ref)
 {
 	*out = (struct solarxr_rpc_message_header){0};
-	uint16_t header_vtable[3];
+	uint16_t header_vtable[4];
 	const struct table_data header =
 	    read_flatbuffers_table(buffer, buffer_len, &ref->offset, header_vtable, ARRAY_SIZE(header_vtable));
 	if (header.length == 0) {
 		return false;
 	}
 
-	if (header_vtable[1] == 0 || header_vtable[2] == 0 ||
-	    header_vtable[2] + sizeof(flatbuffers_uoffset_t) > header.length) {
+	if (header_vtable[2] == 0 || header_vtable[3] == 0 ||
+	    header_vtable[3] + sizeof(flatbuffers_uoffset_t) > header.length) {
 		return true;
 	}
 
-	out->message_type = header.data[header_vtable[1]];
+	out->message_type = header.data[header_vtable[2]];
 
-	switch (header.data[header_vtable[1]]) {
-	case SOLARXR_RPC_MESSAGE_TYPE_SETTINGS_RESPONSE: {
+	switch (header.data[header_vtable[2]]) {
+	case SOLARXR_RPC_MESSAGE_TYPE_BONE_ROUTING_SETTINGS_RESPONSE: {
+		uint16_t message_vtable[2];
+		const struct table_data message = read_flatbuffers_table(
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[3]], message_vtable,
+		    ARRAY_SIZE(message_vtable));
+		if (message.length == 0 || message_vtable[1] == 0 ||
+		    message_vtable[1] + sizeof(flatbuffers_uoffset_t) > message.length) {
+			break;
+		}
+
+		out->message.bone_routing_settings_response.routes =
+		    flatbuffers_vector_solarxr_bone_route(read_flatbuffers_vector(
+		        buffer, buffer_len, (const flatbuffers_uoffset_t *)&message.data[message_vtable[1]],
+		        sizeof(*out->message.bone_routing_settings_response.routes.data)));
+
+		break;
+	}
+	default:;
+	}
+
+	return true;
+}
+
+bool
+read_solarxr_driver_message_header(struct solarxr_driver_message_header *out,
+                                   const uint8_t *buffer,
+                                   const size_t buffer_len,
+                                   const solarxr_driver_message_header_t *ref)
+{
+	*out = (struct solarxr_driver_message_header){0};
+	uint16_t header_vtable[4];
+	const struct table_data header =
+	    read_flatbuffers_table(buffer, buffer_len, &ref->offset, header_vtable, ARRAY_SIZE(header_vtable));
+	if (header.length == 0) {
+		return false;
+	}
+
+	if (header_vtable[1] != 0 && header_vtable[1] + sizeof(out->reply_to) <= header.length) {
+		memcpy(&out->reply_to, &header.data[header_vtable[1]], sizeof(out->reply_to));
+		out->reply_to = le16toh(out->reply_to);
+	}
+
+	if (header_vtable[2] == 0 || header_vtable[3] == 0 ||
+	    header_vtable[3] + sizeof(flatbuffers_uoffset_t) > header.length) {
+		return true;
+	}
+
+	out->message_type = header.data[header_vtable[2]];
+
+	switch (header.data[header_vtable[2]]) {
+	case SOLARXR_DRIVER_MESSAGE_TYPE_HANDSHAKE_RESPONSE: {
 		uint16_t message_vtable[1];
 		const struct table_data message = read_flatbuffers_table(
-		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[2]], message_vtable,
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[3]], message_vtable,
+		    ARRAY_SIZE(message_vtable));
+		if (message.length == 0) {
+			break;
+		}
+
+		if (message_vtable[0] != 0) {
+			out->message.handshake_response.status = message.data[message_vtable[0]];
+		}
+		break;
+	}
+	case SOLARXR_DRIVER_MESSAGE_TYPE_ADD_TRACKER_RESPONSE: {
+		uint16_t message_vtable[2];
+		const struct table_data message = read_flatbuffers_table(
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[3]], message_vtable,
+		    ARRAY_SIZE(message_vtable));
+		if (message.length == 0) {
+			break;
+		}
+
+		struct solarxr_add_tracker_response *out_add_tracker_response = &out->message.add_tracker_response;
+		if (message_vtable[0] != 0) {
+			out_add_tracker_response->status = message.data[message_vtable[0]];
+		}
+		if (message_vtable[1] != 0 &&
+		    message_vtable[1] + sizeof(out_add_tracker_response->tracker_id) <= message.length) {
+			memcpy(&out_add_tracker_response->tracker_id, &message.data[message_vtable[1]],
+			       sizeof(out_add_tracker_response->tracker_id));
+			out_add_tracker_response->tracker_id = le16toh(out_add_tracker_response->tracker_id);
+		}
+		break;
+	}
+	case SOLARXR_DRIVER_MESSAGE_TYPE_SKELETON_UPDATE: {
+		uint16_t message_vtable[1];
+		const struct table_data message = read_flatbuffers_table(
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[3]], message_vtable,
 		    ARRAY_SIZE(message_vtable));
 		if (message.length == 0 || message_vtable[0] == 0 ||
 		    message_vtable[0] + sizeof(flatbuffers_uoffset_t) > message.length) {
 			break;
 		}
 
-		uint16_t trackers_vtable[15];
-		const struct table_data trackers = read_flatbuffers_table(
+		out->message.skeleton_update.bones = flatbuffers_vector_solarxr_bone(read_flatbuffers_vector(
 		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&message.data[message_vtable[0]],
-		    trackers_vtable, ARRAY_SIZE(trackers_vtable));
-		if (trackers.length == 0) {
+		    sizeof(*out->message.skeleton_update.bones.data)));
+		break;
+	}
+	case SOLARXR_DRIVER_MESSAGE_TYPE_BONE_BATTERY_UPDATE: {
+		uint16_t message_vtable[3];
+		const struct table_data message = read_flatbuffers_table(
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&header.data[header_vtable[3]], message_vtable,
+		    ARRAY_SIZE(message_vtable));
+		if (message.length == 0) {
 			break;
 		}
 
-		if (trackers_vtable[0] != 0) {
-			out->message.settings_response.steam_vr_trackers.waist = trackers.data[trackers_vtable[0]];
+		if (message_vtable[0] != 0) {
+			out->message.bone_battery_update.bone = message.data[message_vtable[0]];
 		}
-
-		if (trackers_vtable[1] != 0) {
-			out->message.settings_response.steam_vr_trackers.chest = trackers.data[trackers_vtable[1]];
+		if (message_vtable[1] != 0) {
+			out->message.bone_battery_update.battery_level = message.data[message_vtable[1]];
 		}
-
-		if (trackers_vtable[7] != 0) {
-			out->message.settings_response.steam_vr_trackers.left_foot = trackers.data[trackers_vtable[7]];
+		if (message_vtable[2] != 0) {
+			out->message.bone_battery_update.charging = message.data[message_vtable[2]];
 		}
-
-		if (trackers_vtable[8] != 0) {
-			out->message.settings_response.steam_vr_trackers.right_foot = trackers.data[trackers_vtable[8]];
-		}
-
-		if (trackers_vtable[9] != 0) {
-			out->message.settings_response.steam_vr_trackers.left_knee = trackers.data[trackers_vtable[9]];
-		}
-
-		if (trackers_vtable[10] != 0) {
-			out->message.settings_response.steam_vr_trackers.right_knee =
-			    trackers.data[trackers_vtable[10]];
-		}
-
-		if (trackers_vtable[11] != 0) {
-			out->message.settings_response.steam_vr_trackers.left_elbow =
-			    trackers.data[trackers_vtable[11]];
-		}
-
-		if (trackers_vtable[12] != 0) {
-			out->message.settings_response.steam_vr_trackers.right_elbow =
-			    trackers.data[trackers_vtable[12]];
-		}
-
-		if (trackers_vtable[13] != 0) {
-			out->message.settings_response.steam_vr_trackers.left_hand = trackers.data[trackers_vtable[13]];
-		}
-
-		if (trackers_vtable[14] != 0) {
-			out->message.settings_response.steam_vr_trackers.right_hand =
-			    trackers.data[trackers_vtable[14]];
-		}
-
 		break;
 	}
 	default:;
@@ -335,8 +391,9 @@ read_solarxr_device_data(struct solarxr_device_data *const out,
 		return false;
 	}
 
-	if (data_vtable[0] != 0) {
-		out->id = data.data[data_vtable[0]];
+	if (data_vtable[0] != 0 && data_vtable[0] + sizeof(out->id) <= data.length) {
+		memcpy(&out->id, &data.data[data_vtable[0]], sizeof(out->id));
+		out->id = le16toh(out->id);
 	}
 
 	if (data_vtable[4] != 0 && data_vtable[4] + sizeof(flatbuffers_uoffset_t) <= data.length) {
@@ -362,42 +419,35 @@ read_solarxr_tracker_data(struct solarxr_tracker_data *const out,
 		return false;
 	}
 
-	if (data_vtable[0] != 0 && data_vtable[0] + sizeof(flatbuffers_uoffset_t) <= data.length) {
-		uint16_t id_vtable[2];
-		const struct table_data id = read_flatbuffers_table(
-		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&data.data[data_vtable[0]], id_vtable,
-		    ARRAY_SIZE(id_vtable));
-		if (id_vtable[0] != 0) {
-			out->tracker_id.has_device_id = true;
-			out->tracker_id.device_id = id.data[id_vtable[0]];
-		}
-
-		if (id_vtable[1] != 0) {
-			out->tracker_id.tracker_num = id.data[id_vtable[1]];
-		}
+	if (data_vtable[0] != 0 && data_vtable[0] + sizeof(out->device_id) <= data.length) {
+		out->has_device_id = true;
+		memcpy(&out->device_id, &data.data[data_vtable[0]], sizeof(out->device_id));
+		out->device_id = le16toh(out->device_id);
+	}
+	if (data_vtable[1] != 0 && data_vtable[1] + sizeof(out->tracker_id) <= data.length) {
+		memcpy(&out->tracker_id, &data.data[data_vtable[1]], sizeof(out->tracker_id));
+		out->tracker_id = le16toh(out->tracker_id);
 	}
 
-	if (data_vtable[1] != 0 && data_vtable[1] + sizeof(flatbuffers_uoffset_t) <= data.length) {
-		uint16_t info_vtable[8];
+	if (data_vtable[2] != 0 && data_vtable[2] + sizeof(flatbuffers_uoffset_t) <= data.length) {
+		uint16_t info_vtable[7];
 		const struct table_data info = read_flatbuffers_table(
-		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&data.data[data_vtable[1]], info_vtable,
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&data.data[data_vtable[2]], info_vtable,
 		    ARRAY_SIZE(info_vtable));
 		out->has_info = true;
-		if (info_vtable[1] != 0) {
-			out->info.body_part = info.data[info_vtable[1]];
+		if (info_vtable[2] != 0) {
+			out->info.body_part = info.data[info_vtable[2]];
 		}
 
-		if (info_vtable[7] != 0) {
+		if (info_vtable[6] != 0) {
 			out->info.display_name = flatbuffers_vector_char(read_flatbuffers_vector(
-			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&info.data[info_vtable[7]],
+			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&info.data[info_vtable[6]],
 			    sizeof(*out->info.display_name.data)));
 		}
 	}
 
-	out->has_rotation = read_solarxr_quat(&out->rotation, data.data, data.length, data_vtable[3]);
-	out->has_position = read_solarxr_vec3f(&out->position, data.data, data.length, data_vtable[4]);
-	out->has_raw_angular_velocity =
-	    read_solarxr_vec3f(&out->raw_angular_velocity, data.data, data.length, data_vtable[5]);
+	out->has_rotation = read_solarxr_quat(&out->rotation, data.data, data.length, data_vtable[4]);
+	out->has_position = read_solarxr_vec3f(&out->position, data.data, data.length, data_vtable[5]);
 	out->has_linear_acceleration =
 	    read_solarxr_vec3f(&out->linear_acceleration, data.data, data.length, data_vtable[8]);
 
@@ -411,7 +461,7 @@ read_solarxr_bone(struct solarxr_bone *const out,
                   const solarxr_bone_t *const ref)
 {
 	*out = (struct solarxr_bone){0};
-	uint16_t bone_vtable[4];
+	uint16_t bone_vtable[8];
 	const struct table_data bone =
 	    read_flatbuffers_table(buffer, buffer_len, &ref->offset, bone_vtable, ARRAY_SIZE(bone_vtable));
 	if (bone.length == 0) {
@@ -421,12 +471,43 @@ read_solarxr_bone(struct solarxr_bone *const out,
 	if (bone_vtable[0] != 0) {
 		out->body_part = bone.data[bone_vtable[0]];
 	}
-
-	read_solarxr_quat(&out->rotation_g, bone.data, bone.length, bone_vtable[1]);
-	if (bone_vtable[2] != 0 && bone_vtable[2] + sizeof(out->bone_length) <= bone.length) {
-		memcpy(&out->bone_length, &bone.data[bone_vtable[2]], sizeof(out->bone_length));
+	if (bone_vtable[1] != 0 && bone_vtable[1] + sizeof(out->bone_length) <= bone.length) {
+		memcpy(&out->bone_length, &bone.data[bone_vtable[1]], sizeof(out->bone_length));
 	}
 
-	read_solarxr_vec3f(&out->head_position_g, bone.data, bone.length, bone_vtable[3]);
+	read_solarxr_quat(&out->rotation, bone.data, bone.length, bone_vtable[2]);
+	read_solarxr_quat(&out->orientation, bone.data, bone.length, bone_vtable[3]);
+	read_solarxr_vec3f(&out->head_position, bone.data, bone.length, bone_vtable[4]);
+	read_solarxr_vec3f(&out->tail_position, bone.data, bone.length, bone_vtable[5]);
+	read_solarxr_vec3f(&out->linear_velocity, bone.data, bone.length, bone_vtable[6]);
+	read_solarxr_vec3f(&out->angular_velocity, bone.data, bone.length, bone_vtable[7]);
+
+	return true;
+}
+
+bool
+read_solarxr_bone_route(struct solarxr_bone_route *out,
+                        const uint8_t *buffer,
+                        const size_t buffer_len,
+                        const solarxr_bone_route_t *ref)
+{
+	*out = (struct solarxr_bone_route){0};
+	uint16_t route_vtable[2];
+	const struct table_data route =
+	    read_flatbuffers_table(buffer, buffer_len, &ref->offset, route_vtable, ARRAY_SIZE(route_vtable));
+	if (route.length == 0) {
+		return false;
+	}
+
+	if (route_vtable[0] != 0) {
+		out->bone = route.data[route_vtable[0]];
+	}
+
+	if (route_vtable[1] != 0) {
+		out->outputs = flatbuffers_vector_solarxr_routing_output(read_flatbuffers_vector(
+		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&route.data[route_vtable[1]],
+		    sizeof(*out->outputs.data)));
+	}
+
 	return true;
 }
