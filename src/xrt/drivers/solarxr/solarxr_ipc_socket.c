@@ -239,7 +239,7 @@ solarxr_ipc_socket_wait_timeout(struct solarxr_ipc_socket *const state, const ti
 	    .tv_nsec = timeout % U_TIME_1S_IN_NS,
 	};
 	const bool result = (ppoll(&fd, 1, (timeout >= 0) ? &timeout_ts : NULL, NULL) != -1)
-	                        ? (fd.revents & POLLERR) == 0
+	                        ? (fd.revents & (POLLERR | POLLHUP)) == 0
 	                        : errno == EINTR;
 
 	xrt_reference_dec(&state->reference);
