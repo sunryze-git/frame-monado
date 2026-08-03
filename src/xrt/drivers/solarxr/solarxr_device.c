@@ -591,10 +591,45 @@ solarxr_network_thread(void *const ptr)
 	        },
 	};
 
-	while (solarxr_ipc_socket_wait_timeout(&device->socket, -1)) {
+	bool lost_connection = false;
+	while (solarxr_ipc_socket_is_connected(&device->socket)) {
+		if (!solarxr_ipc_socket_wait_timeout(&device->socket, -1)) {
+			if (!solarxr_ipc_socket_is_connected(&device->socket)) {
+				// We were woke up from wait_timeout when destroying the socket
+				break;
+			}
+
+			if (!lost_connection) {
+				U_LOG_IFL_E(debug_get_log_option_solarxr_log(),
+				            "solarxr_ipc_socket_wait_timeout failed; attempting socket reconnect");
+				lost_connection = true;
+				device->shook_hands = false;
+				atomic_store(&device->enabled_bones, 0);
+				for (size_t i = 0; i < ARRAY_SIZE(device->tracker_refs); ++i) {
+					struct solarxr_generic_tracker *const tracker = device->tracker_refs[i];
+					if (tracker == NULL)
+						break;
+
+					os_mutex_lock(&tracker->mutex);
+					tracker->charge = -1.f;
+					os_mutex_unlock(&tracker->mutex);
+				}
+				feeder_mark_unsent(&device->feeder);
+			}
+
+			//! @todo Maybe write a better way to silence the logs than passing in RAW log level?
+			const struct sockaddr_un path = solarxr_ipc_socket_find(U_LOGGING_RAW, "SlimeVRRpc");
+			if (solarxr_ipc_socket_connect(&device->socket, path)) {
+				lost_connection = false;
+			} else {
+				os_nanosleep(U_TIME_1S_IN_NS);
+			}
+			continue;
+		}
 		const struct span buffer = {solarxr_ipc_socket_receive(&device->socket), device->socket.buffer};
 
 		if (buffer.length == 0) {
+			U_LOG_IFL_E(debug_get_log_option_solarxr_log(), "solarxr_ipc_socket_receive failed");
 			continue;
 		}
 

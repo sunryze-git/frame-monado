@@ -161,8 +161,6 @@ solarxr_ipc_socket_find(const enum u_logging_level log_level, const char filenam
 bool
 solarxr_ipc_socket_connect(struct solarxr_ipc_socket *const state, const struct sockaddr_un addr)
 {
-	solarxr_ipc_socket_close(state);
-
 	xrt_ipc_handle_t ipc_handle = XRT_IPC_HANDLE_INVALID;
 	if (addr.sun_family != AF_UNIX) {
 		goto fail;
