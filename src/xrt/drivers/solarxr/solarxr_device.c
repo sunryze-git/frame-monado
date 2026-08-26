@@ -294,8 +294,11 @@ static void
 solarxr_device_handle_bones(struct solarxr_device *const device,
                             const struct solarxr_bone bones[ARRAY_SIZE(device->bones)])
 {
+	XRT_TRACE_MARKER();
+
 	os_mutex_lock(&device->mutex);
 
+	XRT_TRACE_BEGIN(solarxr_device_handle_generic_trackers);
 	for (size_t i = 0; i < ARRAY_SIZE(device->tracker_refs); ++i) {
 		const struct solarxr_generic_tracker *const tracker = device->tracker_refs[i];
 		if (tracker == NULL || tracker->role == SOLARXR_BODY_PART_NONE) {
@@ -324,6 +327,7 @@ solarxr_device_handle_bones(struct solarxr_device *const device,
 		};
 		m_relation_history_push(history, &relation, device->socket.timestamp);
 	}
+	XRT_TRACE_END(solarxr_device_handle_generic_trackers);
 
 	bool generation_increased = false;
 	for (uint32_t i = 0; i < ARRAY_SIZE(device->bones); ++i) {
@@ -638,6 +642,8 @@ solarxr_network_thread(void *const ptr)
 			U_LOG_IFL_E(debug_get_log_option_solarxr_log(), "solarxr_ipc_socket_receive failed");
 			continue;
 		}
+
+		XRT_TRACE_IDENT(solarxr_network_frame);
 
 		struct solarxr_message_bundle bundle;
 		if (!read_solarxr_message_bundle(&bundle, buffer.data, buffer.length,

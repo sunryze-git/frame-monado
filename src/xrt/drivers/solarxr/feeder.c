@@ -12,6 +12,7 @@
 #include "solarxr_ipc_message.h"
 
 #include "util/u_hashmap.h"
+#include "util/u_trace_marker.h"
 #include "xrt/xrt_device.h"
 
 #include <math.h>
@@ -777,6 +778,8 @@ feeder_device_send_feedback_cb(const uint64_t key, const void *const value, void
 	struct send_feedback_userdata *const data = (struct send_feedback_userdata *)userptr;
 	enum solarxr_tracker_status status = SOLARXR_TRACKER_STATUS_DISCONNECTED;
 
+	XRT_TRACE_MARKER();
+
 	if (xdev == NULL) {
 		device->next_to_erase = data->to_erase;
 		data->to_erase = device;
@@ -827,6 +830,8 @@ feeder_device_send_feedback_cb(const uint64_t key, const void *const value, void
 void
 feeder_send_feedback(struct feeder *const feeder)
 {
+	XRT_TRACE_MARKER();
+
 	os_mutex_lock(&feeder->mutex);
 
 	struct send_feedback_userdata data;
@@ -834,7 +839,10 @@ feeder_send_feedback(struct feeder *const feeder)
 	data.time = os_monotonic_get_ns();
 	data.log_level = feeder->socket->log_level;
 	data.packet_end = data.packet;
+
+	XRT_TRACE_BEGIN(feeder_device_send_feedback_foreach);
 	u_hashmap_int_for_each(feeder->devices, feeder_device_send_feedback_cb, &data);
+	XRT_TRACE_END(feeder_device_send_feedback_foreach);
 
 	// flush queued messages to socket
 	if (data.packet_end != data.packet) {
