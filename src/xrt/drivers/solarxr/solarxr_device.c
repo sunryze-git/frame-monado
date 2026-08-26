@@ -15,6 +15,7 @@
 #include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_time.h"
+#include "util/u_trace_marker.h"
 
 #include <endian.h>
 #include <stdatomic.h>
@@ -347,6 +348,11 @@ static void *
 solarxr_network_thread(void *const ptr)
 {
 	struct solarxr_device *const device = (struct solarxr_device *)ptr;
+
+	const char *const thread_name = "SolarXR Network";
+
+	U_TRACE_SET_THREAD_NAME(thread_name);
+	os_thread_name_self(thread_name);
 
 	static const char driver_name[] = "Monado";
 	struct
