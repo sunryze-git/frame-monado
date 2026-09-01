@@ -115,6 +115,18 @@ solarxr_ipc_socket_find(const enum u_logging_level log_level, const char filenam
 		return (struct sockaddr_un){0};
 	}
 
+	// try override path
+	const char *override_env;
+	int override_path_len = 0;
+	if ((override_env = getenv("SLIMEVR_SOCKET_DIR")) != NULL) {
+		override_path_len = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", override_env, filename);
+	}
+
+	if (override_path_len > 0 && (unsigned)override_path_len < sizeof(addr.sun_path) &&
+	    check_socket_path(log_level, addr.sun_path)) {
+		return addr;
+	}
+
 	const ssize_t runtime_dir_len =
 	    u_file_get_path_in_runtime_dir("", addr.sun_path, sizeof(addr.sun_path) - 1 - filename_len);
 	if (runtime_dir_len <= 0 || (size_t)runtime_dir_len >= sizeof(addr.sun_path) - 1 - filename_len) {
