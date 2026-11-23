@@ -40,6 +40,9 @@ bool
 solarxr_ipc_socket_connect(struct solarxr_ipc_socket *state, struct sockaddr_un addr);
 
 bool
+solarxr_ipc_socket_reconnect(struct solarxr_ipc_socket *state, struct sockaddr_un addr);
+
+bool
 solarxr_ipc_socket_wait_timeout(struct solarxr_ipc_socket *state, time_duration_ns timeout); // thread safe
 
 bool

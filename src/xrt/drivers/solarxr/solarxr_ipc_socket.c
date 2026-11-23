@@ -81,6 +81,8 @@ solarxr_ipc_socket_free_buffer(struct solarxr_ipc_socket *const state)
 	free(state->buffer);
 	state->buffer = NULL;
 	state->buffer_cap = 0;
+	state->head = 0;
+	state->buffer_len = 0;
 }
 
 void
@@ -170,8 +172,10 @@ solarxr_ipc_socket_find(const enum u_logging_level log_level, const char filenam
 	return addr;
 }
 
-bool
-solarxr_ipc_socket_connect(struct solarxr_ipc_socket *const state, const struct sockaddr_un addr)
+static bool
+solarxr_ipc_socket_connect_from(struct solarxr_ipc_socket *const state,
+                               const struct sockaddr_un addr,
+                               xrt_ipc_handle_t previous)
 {
 	xrt_ipc_handle_t ipc_handle = XRT_IPC_HANDLE_INVALID;
 	if (addr.sun_family != AF_UNIX) {
@@ -196,19 +200,27 @@ solarxr_ipc_socket_connect(struct solarxr_ipc_socket *const state, const struct 
 	}
 
 	// optimistic allocation to avoid needless reallocs during receive
-	solarxr_ipc_socket_ensure_capacity(state, 0x1000);
+	if (!solarxr_ipc_socket_ensure_capacity(state, 0x1000)) {
+		goto fail;
+	}
 
-	atomic_store(&state->ipc_handle, ipc_handle);
+	if (!atomic_compare_exchange_strong(&state->ipc_handle, &previous, ipc_handle)) {
+		goto fail;
+	}
+	state->head = 0;
+	state->buffer_len = 0;
 	return true;
 
 fail:
 	xrt_ipc_handle_close(ipc_handle);
 
-	// The IPC handle is used as a lock guard in `solarxr_ipc_socket_destroy()`, so this is the last place to safely
-	// free the buffer without one
-	solarxr_ipc_socket_free_buffer(state);
-
 	return false;
+}
+
+bool
+solarxr_ipc_socket_connect(struct solarxr_ipc_socket *const state, const struct sockaddr_un addr)
+{
+	return solarxr_ipc_socket_connect_from(state, addr, XRT_IPC_HANDLE_INVALID);
 }
 
 // release reference with `xrt_reference_dec(&state->reference);`
@@ -229,6 +241,29 @@ solarxr_ipc_socket_reference_channel(struct solarxr_ipc_socket *const state,
 	    .log_level = state->log_level,
 	};
 	return true;
+}
+
+bool
+solarxr_ipc_socket_reconnect(struct solarxr_ipc_socket *const state, const struct sockaddr_un addr)
+{
+	struct ipc_message_channel previous;
+	if (!solarxr_ipc_socket_reference_channel(state, &previous)) {
+		return false;
+	}
+
+	const bool connected = solarxr_ipc_socket_connect_from(state, addr, previous.ipc_handle);
+	if (connected) {
+		shutdown(previous.ipc_handle, SHUT_RDWR);
+	}
+	xrt_reference_dec(&state->reference);
+
+	if (connected) {
+		while (atomic_load((volatile _Atomic(int) *)&state->reference.count) != 0) {
+			sched_yield();
+		}
+		ipc_message_channel_close(&previous);
+	}
+	return connected;
 }
 
 bool

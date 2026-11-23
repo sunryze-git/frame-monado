@@ -629,7 +629,7 @@ solarxr_network_thread(void *const ptr)
 
 			//! @todo Maybe write a better way to silence the logs than passing in RAW log level?
 			const struct sockaddr_un path = solarxr_ipc_socket_find(U_LOGGING_RAW, "SlimeVRRpc");
-			if (solarxr_ipc_socket_connect(&device->socket, path)) {
+			if (solarxr_ipc_socket_reconnect(&device->socket, path)) {
 				lost_connection = false;
 			} else {
 				os_nanosleep(U_TIME_1S_IN_NS);
